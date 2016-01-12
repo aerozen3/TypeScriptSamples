@@ -41,10 +41,11 @@ class Ship {
     }
 
     updateLayout() {
-        var width = "9.9%";
-        var height = "" + (this.size * 9.9) + "%";
-        this.element.style.left = "" + (this.column * 10) + "%";
-        this.element.style.top = "" + (this.row * 10) + "%";
+        var percent = (100 / Board.row);
+        var width =  percent + "%";
+        var height = "" + (this.size * percent) + "%";
+        this.element.style.left = "" + (this.column * Board.col * .16 * percent) + "%";
+        this.element.style.top = "" + (this.row * Board.row * .16 * percent) + "%";
         this.element.style.width = this.isVertical ? width : height;
         this.element.style.height = this.isVertical ? height : width;
     }
@@ -52,12 +53,12 @@ class Ship {
     flipShip() {
         this.isVertical = !this.isVertical;
         if (this.isVertical) {
-            if (this.row + this.size > 10) {
-                this.row = 10 - this.size;
+            if (this.row + this.size > Board.row) {
+                this.row = Board.row - this.size;
             }
         } else {
-            if (this.column + this.size > 10) {
-                this.column = 10 - this.size;
+            if (this.column + this.size > Board.col) {
+                this.column = Board.col - this.size;
             }
         }
         this.updateLayout();
@@ -88,7 +89,9 @@ class Board {
     cells: Cell[][];             // Indexed by [rows][columns]
     playerTurn = false;          // Set to true when player can move
     onEvent: Function;           // Callback function when an action on the board occurs
-    shipSizes = [5, 4, 3, 3, 2];
+    static row: number = 6;
+    static col: number = 6;
+    shipSizes = [4, 3, 3, 2];
 
     private positioningEnabled: boolean;    // Set to true when the player can position the ships
 
@@ -99,9 +102,9 @@ class Board {
         var cell: Cell = null;
 
         // Create the cells for the board
-        for (var row = 0; row < 10; row++) {
+        for (var row = 0; row < Board.row; row++) {
             this.cells[row] = [];
-            for (var column = 0; column < 10; column++) {
+            for (var column = 0; column < Board.col; column++) {
                 cell = new Cell(row, column);
                 this.cells[row][column] = cell;
                 element.appendChild(cell.element);
@@ -166,8 +169,8 @@ class Board {
 
     static getRandomPosition() {
         return {
-            "row": Math.floor(Math.random() * 10),
-            "column": Math.floor(Math.random() * 10),
+            "row": Math.floor(Math.random() * Board.row),
+            "column": Math.floor(Math.random() * Board.col),
             "vertical": (Math.floor(Math.random() * 2) === 1)
         }
     }
@@ -187,7 +190,18 @@ class Board {
 
     bombCell(cellElem: HTMLElement) {
         var cellPos = Cell.parseCellLocation($(cellElem).data("cellLocation"));
-        var cell = this.cells[cellPos.row][cellPos.column];
+
+        this.setBombClass(cellElem, cellPos.row, cellPos.column);
+
+        if (cellPos.row > 0) {
+            var cellLeft = this.cells[cellPos.row-1][cellPos.column].element;
+            this.setBombClass(cellLeft, cellPos.row-1, cellPos.column);
+        }
+        this.bombCallUpdate(cellElem, cellPos.row, cellPos.column);
+    }
+
+    setBombClass(cellElem: HTMLElement, row: number, column: number) {
+        var cell = this.cells[row][column];
 
         if (cell.hasHit) {
             return;  // Already been clicked on
@@ -198,6 +212,17 @@ class Board {
             $(cellElem).addClass("cellHit");
             var ship = this.ships[cell.shipIndex];
             ship.hits++;
+        } else {
+            $(cellElem).removeClass("notBombed");
+            $(cellElem).addClass("cellMiss");
+        }
+    }
+
+    bombCallUpdate(cellElem: HTMLElement, row: number, column: number) {
+        var cell = this.cells[row][column];
+        if (cell.shipIndex >= 0) { // Has a ship
+            var ship = this.ships[cell.shipIndex];
+            //ship.hits++;
             if (ship.isSunk()) {
                 if (this.allShipsSunk()) {
                     this.onEvent.call(this, 'allSunk');
@@ -208,8 +233,6 @@ class Board {
                 this.onEvent.call(this, 'hit');
             }
         } else {
-            $(cellElem).removeClass("notBombed");
-            $(cellElem).addClass("cellMiss");
             this.onEvent.call(this, 'playerMissed');
         }
     }
@@ -237,7 +260,7 @@ class Board {
         // See if any ship cells are off the board
         var outOfRange = allCells.some(function (val: string) {
             var pos = Cell.parseCellLocation(val);
-            return !(pos.column >= 0 && pos.column <= 9 && pos.row >= 0 && pos.row <= 9);
+            return !(pos.column >= 0 && pos.column < Board.col && pos.row >= 0 && pos.row < Board.row);
         });
         if (dups || outOfRange) {
             return false;
@@ -256,10 +279,12 @@ class Board {
     }
 
     private updateCellData() {
-        for (var i = 0; i < 100; i++) {
-            var x = this.cells[Math.floor(i / 10)][i % 10];
-            x.hasHit = false;
-            x.shipIndex = -1;
+        for (var r = 0; r < Board.row; r++) {
+            for (var c = 0; c < Board.col; c++) {
+                var x = this.cells[r][c];
+                x.hasHit = false;
+                x.shipIndex = -1;
+            }
         }
 
         for (var index = 0; index < this.ships.length; index++) {
